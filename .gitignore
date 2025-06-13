@@ -1,0 +1,24 @@
+**/.cache/*
+
+# Object and command files
+*.o
+*.ko
+*.cmd
+*.mod
+
+# Symbol and module order files
+Module.symvers
+modules.order
+*.mod.c
+*.mod.o
+
+# Compiler database (if using bear)
+compile_commands.json
+
+# Ignore backups or build artifacts
+.*.cmd
+.*.o
+.*.mod.*
+.module-common.*
+.modules.order.*
+
