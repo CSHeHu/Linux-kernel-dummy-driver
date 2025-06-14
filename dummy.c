@@ -1,4 +1,6 @@
 #include "linux/cdev.h"
+#include "linux/device.h"
+#include "linux/err.h"
 #include "linux/gfp_types.h"
 #include "linux/slab.h"
 #include "linux/types.h"
@@ -8,8 +10,10 @@
 #include <linux/uaccess.h>
 
 #define DEVICE_NAME "dummy"
-static dev_t dummy_dev;
+static dev_t dummy_devt;
 static struct cdev dummy_cdev;
+static struct class* dummy_class;
+static struct device* dummy_dev;
 
 static int dummy_open(struct inode *inode, struct file *file)
 {
@@ -74,7 +78,7 @@ static int __init dummy_init(void)
 	
 	int ret = -1;
 	
-	ret = alloc_chrdev_region(&dummy_dev, 0, 1, DEVICE_NAME);
+	ret = alloc_chrdev_region(&dummy_devt, 0, 1, DEVICE_NAME);
 	if (ret != 0){
 		pr_err("dummy: failed to register device\n");
 		return ret;
@@ -82,11 +86,24 @@ static int __init dummy_init(void)
 	
 	ret = -1;
 	cdev_init(&dummy_cdev, &dummy_fops);
-	ret = cdev_add(&dummy_cdev, dummy_dev, 1);
+	ret = cdev_add(&dummy_cdev, dummy_devt, 1);
 
 
 	if (ret < 0){
 		pr_err("dummy: failed to add device\n");
+		return ret;
+	}
+
+	ret = -1;
+	dummy_class = class_create(DEVICE_NAME);
+	if (IS_ERR(dummy_class)){
+		ret = PTR_ERR(dummy_class);
+		return ret;
+	}
+
+	dummy_dev = device_create(dummy_class, NULL, dummy_devt, NULL, DEVICE_NAME);	
+	if (IS_ERR(dummy_dev)){
+		ret = PTR_ERR(dummy_dev);
 		return ret;
 	}
 
@@ -95,8 +112,10 @@ static int __init dummy_init(void)
 
 static void __exit dummy_exit(void)
 {
+	device_destroy(dummy_class, dummy_devt);
+	class_destroy(dummy_class);
 	cdev_del(&dummy_cdev);
-	unregister_chrdev_region(dummy_dev, 1);
+	unregister_chrdev_region(dummy_devt, 1);
 	pr_info("dummy: module unloaded\n");
 }
 
