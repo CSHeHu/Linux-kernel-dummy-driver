@@ -1,3 +1,4 @@
+#include "linux/cdev.h"
 #include "linux/gfp_types.h"
 #include "linux/slab.h"
 #include "linux/types.h"
@@ -7,7 +8,8 @@
 #include <linux/uaccess.h>
 
 #define DEVICE_NAME "dummy"
-#define MAJOR_NUM 240
+static dev_t dummy_dev;
+static struct cdev dummy_cdev;
 
 static int dummy_open(struct inode *inode, struct file *file)
 {
@@ -69,22 +71,32 @@ static const struct file_operations dummy_fops = {
 
 static int __init dummy_init(void)
 {
-	int ret;
-
-	ret = register_chrdev(MAJOR_NUM, DEVICE_NAME, &dummy_fops);
-	if (ret < 0) {
+	
+	int ret = -1;
+	
+	ret = alloc_chrdev_region(&dummy_dev, 0, 1, DEVICE_NAME);
+	if (ret != 0){
 		pr_err("dummy: failed to register device\n");
 		return ret;
 	}
+	
+	ret = -1;
+	cdev_init(&dummy_cdev, &dummy_fops);
+	ret = cdev_add(&dummy_cdev, dummy_dev, 1);
 
-	pr_info("dummy: module loaded\n");
-	pr_info("dummy: create device node with: mknod /dev/%s c %d 0\n", DEVICE_NAME, MAJOR_NUM);
+
+	if (ret < 0){
+		pr_err("dummy: failed to add device\n");
+		return ret;
+	}
+
 	return 0;
 }
 
 static void __exit dummy_exit(void)
 {
-	unregister_chrdev(MAJOR_NUM, DEVICE_NAME);
+	cdev_del(&dummy_cdev);
+	unregister_chrdev_region(dummy_dev, 1);
 	pr_info("dummy: module unloaded\n");
 }
 
