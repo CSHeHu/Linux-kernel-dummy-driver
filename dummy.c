@@ -47,22 +47,22 @@ static ssize_t dummy_read(struct file *file, char __user *buf, size_t len, loff_
 
 static ssize_t dummy_write(struct file *file, const char __user *buf, size_t len, loff_t *offset)
 {
-    char *msg = kmalloc(len + 1, GFP_KERNEL);
-    if (!msg)
-        return -ENOMEM;
+	char *msg = kmalloc(len + 1, GFP_KERNEL);
+	if (!msg)
+		return -ENOMEM;
 
-    if (copy_from_user(msg, buf, len)) {
-        kfree(msg);
-        return -EFAULT;
-    }
+	if (copy_from_user(msg, buf, len)) {
+		kfree(msg);
+		return -EFAULT;
+	}
 
-    msg[len] = '\0';
-    pr_info("dummy: received: %s\n", msg);
+	msg[len] = '\0';
+	pr_info("dummy: received: %s\n", msg);
 
-    *offset += len;
+	*offset += len;
 
-    kfree(msg);
-    return len;
+	kfree(msg);
+	return len;
 }
 
 static const struct file_operations dummy_fops = {
@@ -75,39 +75,45 @@ static const struct file_operations dummy_fops = {
 
 static int __init dummy_init(void)
 {
-	
-	int ret = -1;
-	
+	int ret;
+
 	ret = alloc_chrdev_region(&dummy_devt, 0, 1, DEVICE_NAME);
-	if (ret != 0){
+	if (ret) {
 		pr_err("dummy: failed to register device\n");
 		return ret;
 	}
-	
-	ret = -1;
+
 	cdev_init(&dummy_cdev, &dummy_fops);
 	ret = cdev_add(&dummy_cdev, dummy_devt, 1);
-
-
-	if (ret < 0){
+	if (ret < 0) {
 		pr_err("dummy: failed to add device\n");
-		return ret;
+		goto unregister_chrdev;
 	}
 
-	ret = -1;
 	dummy_class = class_create(DEVICE_NAME);
-	if (IS_ERR(dummy_class)){
+	if (IS_ERR(dummy_class)) {
+		pr_err("dummy: failed to create class\n");
 		ret = PTR_ERR(dummy_class);
-		return ret;
+		goto del_cdev;
 	}
 
-	dummy_dev = device_create(dummy_class, NULL, dummy_devt, NULL, DEVICE_NAME);	
-	if (IS_ERR(dummy_dev)){
+	dummy_dev = device_create(dummy_class, NULL, dummy_devt, NULL, DEVICE_NAME);
+	if (IS_ERR(dummy_dev)) {
+		pr_err("dummy: failed to create device\n");
 		ret = PTR_ERR(dummy_dev);
-		return ret;
+		goto destroy_class;
 	}
 
+	pr_info("dummy: module loaded\n");
 	return 0;
+
+destroy_class:
+	class_destroy(dummy_class);
+del_cdev:
+	cdev_del(&dummy_cdev);
+unregister_chrdev:
+	unregister_chrdev_region(dummy_devt, 1);
+	return ret;
 }
 
 static void __exit dummy_exit(void)

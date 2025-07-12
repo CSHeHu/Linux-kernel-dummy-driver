@@ -1,4 +1,4 @@
-KDIR := ~/dev/kernel/char-misc/
+KDIR := ~/dev/kernel/linux-stable/
 obj-m := dummy.o
 
 
