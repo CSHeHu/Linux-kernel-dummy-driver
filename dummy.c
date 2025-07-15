@@ -77,7 +77,7 @@ static ssize_t dummy_write(struct file *file, const char __user *buf, size_t len
 	stored_msg_len = len;
 	*offset += len;
 
-	pr_info("dummy: received %zu bytes: %s\n", len, msg);
+	pr_info("dummy: received %zu bytes\n", len);
 	return len;
 }
 
