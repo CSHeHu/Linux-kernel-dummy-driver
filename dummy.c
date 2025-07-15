@@ -14,6 +14,8 @@ static dev_t dummy_devt;
 static struct cdev dummy_cdev;
 static struct class* dummy_class;
 static struct device* dummy_dev;
+static char *msg = NULL;
+static size_t stored_msg_len = 0;
 
 static int dummy_open(struct inode *inode, struct file *file)
 {
@@ -29,39 +31,53 @@ static int dummy_release(struct inode *inode, struct file *file)
 
 static ssize_t dummy_read(struct file *file, char __user *buf, size_t len, loff_t *offset)
 {
-	const char *msg = "Hello from dummy driver!\n";
-	size_t msg_len = strlen(msg);
+	int not_copied, delta;
+	size_t to_copy;
 
-	if (*offset >= msg_len)
+	if (msg == NULL || *offset >= stored_msg_len)
 		return 0;
 
-	if (len > msg_len - *offset)
-		len = msg_len - *offset;
+	to_copy = min(len, stored_msg_len - *offset);
 
-	if (copy_to_user(buf, msg + *offset, len))
-		return -EFAULT;
+	pr_info("dummy: read called, requested %zu bytes, copying %zu bytes at offset %lld\n",
+		len, to_copy, *offset);
 
-	*offset += len;
-	return len;
+	not_copied = copy_to_user(buf, msg + *offset, to_copy);
+	delta = to_copy - not_copied;
+
+	if (not_copied)
+		pr_warn("dummy: could only copy %d bytes\n", delta);
+
+	*offset += delta;
+	return delta;
 }
 
 static ssize_t dummy_write(struct file *file, const char __user *buf, size_t len, loff_t *offset)
 {
-	char *msg = kmalloc(len + 1, GFP_KERNEL);
-	if (!msg)
-		return -ENOMEM;
 
-	if (copy_from_user(msg, buf, len)) {
-		kfree(msg);
+	char *new_msg;
+
+	new_msg = kmalloc(len + 1, GFP_KERNEL);
+	if (!new_msg){
+		stored_msg_len = 0;
+		return -ENOMEM;
+	}
+
+	if (copy_from_user(new_msg, buf, len)) {
+		kfree(new_msg);
+		stored_msg_len = 0;
 		return -EFAULT;
 	}
 
-	msg[len] = '\0';
-	pr_info("dummy: received: %s\n", msg);
+	pr_info("dummy: write called, requested %zu bytes at offset %lld\n", len, *offset);
 
+	new_msg[len] = '\0';
+	kfree(msg);
+	msg = new_msg;
+	stored_msg_len = len;
 	*offset += len;
 
-	kfree(msg);
+	pr_info("dummy: received %zu bytes: %s\n", len, msg);
 	return len;
 }
 
@@ -118,6 +134,9 @@ unregister_chrdev:
 
 static void __exit dummy_exit(void)
 {
+	if (msg != NULL) {
+		kfree(msg);
+	}
 	device_destroy(dummy_class, dummy_devt);
 	class_destroy(dummy_class);
 	cdev_del(&dummy_cdev);
