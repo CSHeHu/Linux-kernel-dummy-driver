@@ -1,3 +1,4 @@
+#include "linux/mutex.h"
 #include "linux/cdev.h"
 #include "linux/device.h"
 #include "linux/err.h"
@@ -10,6 +11,7 @@
 #include <linux/uaccess.h>
 
 #define DEVICE_NAME "dummy"
+static DEFINE_MUTEX(dummy_mutex);
 static dev_t dummy_devt;
 static struct cdev dummy_cdev;
 static struct class* dummy_class;
@@ -31,11 +33,14 @@ static int dummy_release(struct inode *inode, struct file *file)
 
 static ssize_t dummy_read(struct file *file, char __user *buf, size_t len, loff_t *offset)
 {
+	mutex_lock(&dummy_mutex);
 	int not_copied, delta;
 	size_t to_copy;
 
-	if (msg == NULL || *offset >= stored_msg_len)
+	if (msg == NULL || *offset >= stored_msg_len){
+		mutex_unlock(&dummy_mutex);
 		return 0;
+		}
 
 	to_copy = min(len, stored_msg_len - *offset);
 
@@ -49,23 +54,26 @@ static ssize_t dummy_read(struct file *file, char __user *buf, size_t len, loff_
 		pr_warn("dummy: could only copy %d bytes\n", delta);
 
 	*offset += delta;
+	mutex_unlock(&dummy_mutex);
 	return delta;
 }
 
 static ssize_t dummy_write(struct file *file, const char __user *buf, size_t len, loff_t *offset)
 {
 
+	mutex_lock(&dummy_mutex);
 	char *new_msg;
 
 	new_msg = kmalloc(len + 1, GFP_KERNEL);
 	if (!new_msg){
-		stored_msg_len = 0;
+		mutex_unlock(&dummy_mutex);
 		return -ENOMEM;
 	}
 
 	if (copy_from_user(new_msg, buf, len)) {
 		kfree(new_msg);
 		stored_msg_len = 0;
+		mutex_unlock(&dummy_mutex);
 		return -EFAULT;
 	}
 
@@ -78,6 +86,8 @@ static ssize_t dummy_write(struct file *file, const char __user *buf, size_t len
 	*offset += len;
 
 	pr_info("dummy: received %zu bytes\n", len);
+
+	mutex_unlock(&dummy_mutex);
 	return len;
 }
 
